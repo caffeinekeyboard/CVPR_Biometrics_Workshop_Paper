@@ -48,7 +48,7 @@ def idct2(x, norm="ortho"):
     """
     x_shape = x.shape
     signal_length = x.shape[-1]
-    signal_list = x.reshape(-1, signal_length) /2.0
+    signal_list = x.reshape(-1, signal_length) / 2.0
     
     if norm == "ortho":
         signal_list[:, 0] *= 2.0 * signal_length ** 0.5
