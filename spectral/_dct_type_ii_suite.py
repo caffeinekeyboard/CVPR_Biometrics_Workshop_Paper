@@ -106,8 +106,80 @@ def idct_2d(X, norm=None):
 
 
 
-class LinearDCT(nn.linear):
+class LinearDCT(nn.Linear):
     """
-    Docstring for LinearDCT
+    LinearDCT class implements the 1-D DCT Type-II as a linear layer by calculating the linear transfomration matrix using the DCT Type-II algorithmic suite.
+    
+    Args:
+        in_features (int): Number of input features to the linear layer.
+        type (str): 1-D DCT mode among 'dct' and 'idct' for discrete cosine transform and inverse discrete cosine transform respectively.
+        
+    Returns:
+        torch.nn.Linear: A linear layer that takes applies the selected type of transform to the input feature vector.
+        
+    In practice this layer executes around 50x faster on a GPU since matrix multiplication is one of the most optimized algorithms in parallel processing.
+    The drawback is that the DCT matrix will be stored, which increases memory usage.
     """
-    pass
+    def __init__(self, in_features, type, norm='ortho', bias=False):
+        self.type = type
+        self.norm = norm
+        super(LinearDCT, self).__init__(in_features, in_features, bias=bias)
+        
+    def reset_parameters(self):
+        """
+            This function overrides the reset_parameters() function in nn.Linear class.
+            It transforms a 2D identity matrix of dimensions (in_features, in_features) through the selected type of transform.
+            This transformed identity matrix is transposed and copied into the weights for this layer and then freezes them.
+            
+            y = xM where M is the transform matrix, M = dct(I) or idct(I) depending on the selected type of transform.
+        """
+        I = torch.eye(self.in_features)
+        
+        if self.type == 'dct':
+            transform_matrix = dct2(I, norm=self.norm)
+        elif self.type == 'idct':
+            transform_matrix = idct2(I, norm=self.norm)
+        else:
+            raise ValueError("Please select a valid transform type, must be 'dct' or 'idct'.")
+        
+        with torch.no_grad():
+            self.weight.copy_(transform_matrix.t())
+            self.weight.requires_grad = False
+
+
+            
+
+class DCTSpectralPooling(nn.Module):
+    """
+        DCTSpectralPooling Class implements the spectral pool and filter as a pytorch neural module.
+        
+        Args:
+            height (int): The height of the input feature map.
+            width (int): The width of the input feature map.
+            keep_h (int): The height of the pre-masked crop in the frequency domain. 
+            keep_w (int): The width of the pre-masked crop in the frequency domain.
+            
+        Returns:
+            torch.nn.Module: A pytorch neural module that implements two dimensional DCT Type-II Spectral Pooling on a feature map.
+    """
+    def __init__(self, height, width, keep_h, keep_w):
+        super(DCTSpectralPooling, self).__init__()
+        self.dct_h = LinearDCT(height, type='dct', norm='ortho')
+        self.dct_w = LinearDCT(width, type='dct', norm='ortho')
+        self.idct_h = LinearDCT(height, type='idct', norm='ortho')
+        self.idct_w = LinearDCT(width, type='idct', norm='ortho')
+        mask = torch.zeros(height, width)
+        mask[:keep_h, :keep_w] = 1
+        self.register_buffer('mask', mask)
+        
+    def forward(self, x):
+        freq_w = self.dct_w(x)
+        freq_w_t = freq_w.transpose(-1, -2)
+        freq_hw_t = self.dct_h(freq_w_t)
+        freq_2d = freq_hw_t.transpose(-1, -2)
+        pooled_freq = freq_2d * self.mask
+        pooled_freq_t = pooled_freq.transpose(-1, -2)
+        spatial_h_t = self.idct_h(pooled_freq_t)
+        spatial_h = spatial_h_t.transpose(-1, -2)
+        output = self.idct_w(spatial_h)
+        return output
