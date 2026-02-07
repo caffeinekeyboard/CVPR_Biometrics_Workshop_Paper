@@ -88,7 +88,7 @@ def dct2_2d(x, norm=None):
 
 
 
-def idct_2d(X, norm=None):
+def idct2_2d(X, norm=None):
     """
     Compute the Inverse Discrete Cosine Transform (IDCT) for DCT-II of a two-dimensional input tensor.
     
