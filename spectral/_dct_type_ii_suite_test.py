@@ -69,19 +69,43 @@ def test_lineardct_device_movement(device, dtype):
     assert layer.weight.device == x.device, "Layer weights did not move to the correct device."
 
 def test_dct_spectral_pooling_buffer_persistence(device, dtype):
-    H, W = 32, 32
-    keep_h, keep_w = 16, 16
-    pool = DCTSpectralPooling(H, W, keep_h, keep_w).to(dtype)
+    in_H, in_W = 32, 32
+    freq_h, freq_w = 16, 16
+    out_H, out_W = 24, 24
+    pool = DCTSpectralPooling(in_H, in_W, freq_h, freq_w, out_H, out_W).to(dtype)
     pool = pool.to(device)
-    x = torch.randn(1, 1, H, W, device=device, dtype=dtype)
+    x = torch.randn(1, 1, in_H, in_W, device=device, dtype=dtype)
     
     try:
         out = pool(x)
     except RuntimeError as e:
         pytest.fail(f"Spectral Pooling Device mismatch: {e}")
-        
-    assert out.shape == x.shape
+
+    assert out.shape == (1, 1, out_H, out_W), "Output spatial dimensions do not match out_height and out_width."
     assert pool.mask.device.type == device.type
+
+def test_dct_spectral_pooling_guardrails():
+    with pytest.raises(AssertionError, match="frequency domain crop height must be less than or equal"):
+        DCTSpectralPooling(in_height=32, in_width=32, freq_h=24, freq_w=16, out_height=16, out_width=16)
+    with pytest.raises(AssertionError, match="This module is not built to upsample"):
+        DCTSpectralPooling(in_height=32, in_width=32, freq_h=16, freq_w=16, out_height=64, out_width=64)
+        
+def test_dct_spectral_pooling_batch_preservation(device, dtype):
+    in_H, in_W = 32, 32
+    freq_h, freq_w = 16, 16
+    out_H, out_W = 24, 24
+    pool = DCTSpectralPooling(in_H, in_W, freq_h, freq_w, out_H, out_W).to(device).to(dtype)
+    B1 = 7
+    x_3d = torch.randn(B1, in_H, in_W, device=device, dtype=dtype)
+    out_3d = pool(x_3d)
+    
+    assert out_3d.shape == (B1, out_H, out_W), f"Failed on 3D tensor. Expected {(B1, out_H, out_W)}, got {out_3d.shape}"
+
+    B2, C = 13, 5
+    x_4d = torch.randn(B2, C, in_H, in_W, device=device, dtype=dtype)
+    out_4d = pool(x_4d)
+    
+    assert out_4d.shape == (B2, C, out_H, out_W), f"Failed on 4D tensor. Expected {(B2, C, out_H, out_W)}, got {out_4d.shape}"
 
 # -----------------------------------------------------------------------------
 # 3. AUTOGRAD & GRADIENT TESTS
@@ -114,15 +138,18 @@ def test_lineardct_frozen_weights(device, dtype):
     assert_tensors_close(layer.weight, initial_weight)
 
 def test_spectral_pooling_end_to_end_train_step(device, dtype):
-    H, W = 16, 16
-    pool = DCTSpectralPooling(H, W, 8, 8).to(device).to(dtype)
-    x = torch.randn(2, H, W, device=device, dtype=dtype, requires_grad=True)
+    in_H, in_W = 16, 16
+    freq_h, freq_w = 8, 8
+    out_H, out_W = 12, 12
+    pool = DCTSpectralPooling(in_H, in_W, freq_h, freq_w, out_H, out_W).to(device).to(dtype)
+    x = torch.randn(2, in_H, in_W, device=device, dtype=dtype, requires_grad=True)
     out = pool(x)
     loss = out.mean()
     loss.backward()
     
-    assert x.grad is not None
-    assert not torch.isnan(x.grad).any()
+    assert out.shape == (2, out_H, out_W), "Output spatial shape is incorrect in forward pass."
+    assert x.grad is not None, "Gradients did not flow back to input."
+    assert not torch.isnan(x.grad).any(), "NaNs detected in gradients."
 
 # -----------------------------------------------------------------------------
 # 4. EQUIVALENCE TESTS

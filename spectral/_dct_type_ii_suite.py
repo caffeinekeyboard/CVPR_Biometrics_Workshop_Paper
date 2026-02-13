@@ -151,25 +151,40 @@ class LinearDCT(nn.Linear):
 
 class DCTSpectralPooling(nn.Module):
     """
-        DCTSpectralPooling Class implements the spectral pool and filter as a pytorch neural module.
+    DCTSpectralPooling implements spatial downsampling and low-pass filtering by leveraging the 2D Discrete Cosine Transform (Type-II).
+    These are the steps performed in the forward pass:
+    1. Transform the input spatial feature map into the frequency domain. 
+    2. Apply a binary mask to retain only the lowest frequencies.
+    3. Crop the tensor to the target spatial dimensions.
+    4. Finally reconstruct the spatial map using an Inverse Discrete Cosine Transform.
+    
+    Args:
+        in_height (int): The height of the input spatial feature map.
+        in_width (int): The width of the input spatial feature map.
+        freq_h (int): The height of the low-frequency region to keep (masking height). 
+        freq_w (int): The width of the low-frequency region to keep (masking width).
+        out_height (int): The target height of the output spatial feature map.
+        out_width (int): The target width of the output spatial feature map.
         
-        Args:
-            height (int): The height of the input feature map.
-            width (int): The width of the input feature map.
-            keep_h (int): The height of the pre-masked crop in the frequency domain. 
-            keep_w (int): The width of the pre-masked crop in the frequency domain.
-            
-        Returns:
-            torch.nn.Module: A pytorch neural module that implements two dimensional DCT Type-II Spectral Pooling on a feature map.
+    Shape:
+        - Input: `(..., in_height, in_width)` where `...` means any number of 
+                 additional dimensions (e.g., batch and channel dimensions).
+        - Output: `(..., out_height, out_width)`
     """
-    def __init__(self, height, width, keep_h, keep_w):
+    def __init__(self, in_height, in_width, freq_h, freq_w, out_height, out_width):
         super(DCTSpectralPooling, self).__init__()
-        self.dct_h = LinearDCT(height, type='dct', norm='ortho')
-        self.dct_w = LinearDCT(width, type='dct', norm='ortho')
-        self.idct_h = LinearDCT(height, type='idct', norm='ortho')
-        self.idct_w = LinearDCT(width, type='idct', norm='ortho')
-        mask = torch.zeros(height, width)
-        mask[:keep_h, :keep_w] = 1
+        assert out_height <= in_height, "This module is not built to upsample."
+        assert out_width <= in_width, "This module is not built to upsample."
+        assert freq_h <= out_height, "The frequency domain crop height must be less than or equal to the output spatial domain height."
+        assert freq_w <= out_width, "The frequency domain crop width must be less than or equal to the output spatial domain width."
+        self.out_height = out_height
+        self.out_width = out_width
+        self.dct_h = LinearDCT(in_height, type='dct', norm='ortho')
+        self.dct_w = LinearDCT(in_width, type='dct', norm='ortho')
+        self.idct_h = LinearDCT(out_height, type='idct', norm='ortho')
+        self.idct_w = LinearDCT(out_width, type='idct', norm='ortho')
+        mask = torch.zeros(in_height, in_width)
+        mask[:freq_h, :freq_w] = 1
         self.register_buffer('mask', mask)
         
     def forward(self, x):
@@ -178,8 +193,9 @@ class DCTSpectralPooling(nn.Module):
         freq_hw_t = self.dct_h(freq_w_t)
         freq_2d = freq_hw_t.transpose(-1, -2)
         pooled_freq = freq_2d * self.mask
-        pooled_freq_t = pooled_freq.transpose(-1, -2)
-        spatial_h_t = self.idct_h(pooled_freq_t)
+        cropped_pooled_freq = pooled_freq[..., :self.out_height, :self.out_width]
+        cropped_pooled_freq_t = cropped_pooled_freq.transpose(-1, -2)
+        spatial_h_t = self.idct_h(cropped_pooled_freq_t)
         spatial_h = spatial_h_t.transpose(-1, -2)
         output = self.idct_w(spatial_h)
         return output
