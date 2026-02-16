@@ -71,12 +71,12 @@ class GumNetSiameseMatching(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             
-            # Block 2: 6x6 -> Conv(1024-3x3-1-'valid') -> 4x4
+            # Block 5: 6x6 -> Conv(1024-3x3-1-'valid') -> 4x4
             nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             
-            # Block 2: 4x4 -> Conv(1024-3x3-1-'valid') -> 2x2
+            # Block 6: 4x4 -> Conv(1024-3x3-1-'valid') -> 2x2
             nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
@@ -106,12 +106,12 @@ class GumNetSiameseMatching(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             
-            # Block 2: 6x6 -> Conv(1024-3x3-1-'valid') -> 4x4
+            # Block 5: 6x6 -> Conv(1024-3x3-1-'valid') -> 4x4
             nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             
-            # Block 2: 4x4 -> Conv(1024-3x3-1-'valid') -> 2x2
+            # Block 6: 4x4 -> Conv(1024-3x3-1-'valid') -> 2x2
             nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
