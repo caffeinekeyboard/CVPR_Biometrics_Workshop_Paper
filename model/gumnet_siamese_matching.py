@@ -57,7 +57,27 @@ class GumNetSiameseMatching(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             
-            # Flatten: (B, 1024, 10, 10) -> (B, 102400)
+            # Block 3: 10x10 -> Conv(1024-3x3-1-'valid') -> 8x8
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Block 4: 8x8 -> Conv(1024-3x3-1-'valid') -> 6x6
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Block 2: 6x6 -> Conv(1024-3x3-1-'valid') -> 4x4
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Block 2: 4x4 -> Conv(1024-3x3-1-'valid') -> 2x2
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Flatten: (B, 1024, 2, 2) -> (B, 4096)
             nn.Flatten()
         )
         self.regression_block_ba = nn.Sequential(
@@ -72,7 +92,27 @@ class GumNetSiameseMatching(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             
-            # Flatten: (B, 1024, 10, 10) -> (B, 102400)
+            # Block 3: 10x10 -> Conv(1024-3x3-1-'valid') -> 8x8
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Block 4: 8x8 -> Conv(1024-3x3-1-'valid') -> 6x6
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Block 2: 6x6 -> Conv(1024-3x3-1-'valid') -> 4x4
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Block 2: 4x4 -> Conv(1024-3x3-1-'valid') -> 2x2
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            
+            # Flatten: (B, 1024, 2, 2) -> (B, 4096)
             nn.Flatten()
         )
         self.l2_norm = FeatureL2Norm()

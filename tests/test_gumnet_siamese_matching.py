@@ -47,7 +47,7 @@ def test_forward_pass_dimensions(siamese_matcher):
     with torch.no_grad():
         out_ab, out_ba = siamese_matcher(v_a, v_b)
 
-    expected_shape = (batch_size, 102400)
+    expected_shape = (batch_size, 4096)
 
     assert out_ab.shape == expected_shape, \
         f"Expected out_ab shape {expected_shape}, but got {out_ab.shape}"   
@@ -114,5 +114,5 @@ def test_siamese_variable_batch_sizes(siamese_matcher):
         out_ab_1, _ = siamese_matcher(batch_1_a, batch_1_b)
         out_ab_4, _ = siamese_matcher(batch_4_a, batch_4_b)
 
-    assert out_ab_1.shape == (1, 102400), f"Failed on Batch Size 1: {out_ab_1.shape}"
-    assert out_ab_4.shape == (4, 102400), f"Failed on Batch Size 4: {out_ab_4.shape}"
+    assert out_ab_1.shape == (1, 4096), f"Failed on Batch Size 1: {out_ab_1.shape}"
+    assert out_ab_4.shape == (4, 4096), f"Failed on Batch Size 4: {out_ab_4.shape}"
