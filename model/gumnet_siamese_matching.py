@@ -27,7 +27,11 @@ class GumNetSiameseMatching(nn.Module):
         - Regression Block AB (for C_ab):
             - Conv2d:   (B, 1024, 12, 12)  | 3x3, padding=0 ('valid')
             - Conv2d:   (B, 1024, 10, 10)  | 3x3, padding=0 ('valid')
-            - Flatten:  (B, 102400)        | 1024 * 10 * 10
+            - Conv2d:   (B, 1024, 8, 8)    | 3x3, padding=0 ('valid')
+            - Conv2d:   (B, 1024, 6, 6)    | 3x3, padding=0 ('valid')
+            - Conv2d:   (B, 1024, 4, 4)    | 3x3, padding=0 ('valid')
+            - Conv2d:   (B, 1024, 2, 2)    | 3x3, padding=0 ('valid')
+            - Flatten:  (B, 4096)          | 1024 * 2 * 2
         - Regression Block BA (for C_ba):
             - Same operations as AB, but with strictly independent weights -> (B, 102400)
 
