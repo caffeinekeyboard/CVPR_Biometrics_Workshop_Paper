@@ -1,5 +1,6 @@
 import os
 import argparse
+import json
 import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -91,13 +92,24 @@ def main():
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     
     best_val_loss = float('inf')
+    history = {
+        'train_loss': [],
+        'val_loss': []
+    }
+    history_path = os.path.join(args.save_dir, 'training_history.json')
     
     for epoch in range(1, args.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, args.device, epoch)
         val_loss = validate(model, val_loader, criterion, args.device, epoch)
-        
+    
         scheduler.step(val_loss)
-        
+
+        history['train_loss'].append(train_loss)
+        history['val_loss'].append(val_loss)
+
+        with open(history_path, 'w') as f:
+            json.dump(history, f, indent=4)
+
         print(f"Epoch [{epoch}/{args.epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
         if val_loss < best_val_loss:
@@ -106,7 +118,9 @@ def main():
             torch.save(model.state_dict(), save_path)
             print(f"--> Saved new best model to {save_path} (Val Loss: {best_val_loss:.4f})")
 
-    print("Training Complete. Best Validation Loss:", best_val_loss)
+    print(f"Training Complete. Best Validation Loss: {best_val_loss:.4f}")
+    print(f"Loss metrics saved to {history_path}")
+
 
 if __name__ == '__main__':
     main()
