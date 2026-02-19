@@ -1,7 +1,7 @@
 import json
 import matplotlib.pyplot as plt
 
-with open('./checkpoints/training_history.json', 'r') as f:
+with open('./checkpoints/training_history_noise_level_5.json', 'r') as f:
     history = json.load(f)
 
 epochs = range(1, len(history['train_loss']) + 1)

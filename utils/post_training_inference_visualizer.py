@@ -2,12 +2,16 @@ import os
 import torch
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
+from pathlib import Path
 from PIL import Image
 
 from model.gumnet import GumNet
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-CHECKPOINT_PATH = './checkpoints/gumnet_2d_best.pth'
+CHECKPOINT_PATH = './checkpoints/gumnet_2d_best_noise_level_10_4x4.pth'
+OUTPUT_DIR = './inference_plots'
+TARGET_NOISE_LEVEL = 'Noise_Level_10'
+GRID_SIZE = 4  # Adjust this to match your checkpoint
 
 def load_and_preprocess_image(image_path):
     transform = T.Compose([
@@ -61,11 +65,11 @@ def plot_results(template, impression, warped_impression):
     axes[5].axis('off')
     
     plt.tight_layout()
-    plt.show()
+    return fig
 
-def main(template_path, impression_path):
+def main(template_path, impression_path, save_path=None):
     
-    model = GumNet(in_channels=1).to(DEVICE)
+    model = GumNet(in_channels=1, grid_size=GRID_SIZE).to(DEVICE)
 
     if os.path.exists(CHECKPOINT_PATH):
         model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=DEVICE))
@@ -83,10 +87,73 @@ def main(template_path, impression_path):
     Sa_plot = Sa.squeeze().cpu().numpy()
     Sb_plot = Sb.squeeze().cpu().numpy()
     warped_Sb_plot = warped_Sb.squeeze().cpu().numpy()
-    plot_results(Sa_plot, Sb_plot, warped_Sb_plot)
+    fig = plot_results(Sa_plot, Sb_plot, warped_Sb_plot)
+    
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fig.savefig(save_path, dpi=100, bbox_inches='tight')
+        print(f"Saved plot to {save_path}")
+        plt.close(fig)
+    else:
+        plt.show()
+
+def process_all_test_images():
+    """Process all images in test directories for a specific noise level and save plots."""
+    # Create output directory
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    data_dir = Path('./data')
+    
+    # Iterate through all categories
+    for category_dir in sorted(data_dir.iterdir()):
+        if not category_dir.is_dir():
+            continue
+        
+        category_name = category_dir.name
+        print(f"\nProcessing category: {category_name}")
+        
+        # Check if master directory exists
+        master_dir = category_dir / 'master'
+        if not master_dir.exists():
+            print(f"  No master directory found for {category_name}")
+            continue
+        
+        # Target the specific noise level
+        noise_dir = category_dir / TARGET_NOISE_LEVEL
+        
+        if not noise_dir.exists():
+            print(f"  {TARGET_NOISE_LEVEL} not found for {category_name}")
+            continue
+        
+        test_dir = noise_dir / 'test'
+        
+        if not test_dir.exists():
+            print(f"  Test directory not found in {TARGET_NOISE_LEVEL} for {category_name}")
+            continue
+        
+        print(f"  Processing {TARGET_NOISE_LEVEL}...")
+        
+        # Process each test image
+        for test_image_path in sorted(test_dir.glob('*.png')):
+            # Extract the base name (e.g., "1_805")
+            test_image_name = test_image_path.stem
+            # Extract template id (first part before underscore)
+            template_id = test_image_name.split('_')[0]
+            
+            # Look for corresponding template in master directory
+            template_path = master_dir / f'{template_id}.png'
+            
+            if not template_path.exists():
+                print(f"    Warning: Template {template_path} not found for {test_image_path.name}")
+                continue
+            
+            # Create output path
+            output_path = Path(OUTPUT_DIR) / category_name / (TARGET_NOISE_LEVEL + '_4x4') / f'{test_image_name}.png'
+            
+            try:
+                main(str(template_path), str(test_image_path), str(output_path))
+            except Exception as e:
+                print(f"    Error processing {test_image_path}: {e}")
 
 if __name__ == '__main__':
-    TEMPLATE_FILE = 'data/Natural/master/1.png' 
-    IMPRESSION_FILE = 'data/Natural/Noise_Level_0/test/1_805.png'
-    
-    main(TEMPLATE_FILE, IMPRESSION_FILE)
+    process_all_test_images()

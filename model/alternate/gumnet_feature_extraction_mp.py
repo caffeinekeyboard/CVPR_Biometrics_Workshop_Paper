@@ -86,7 +86,7 @@ class GumNetFeatureExtractionMP(nn.Module):
             branch (str): Either 'Sa' or 'Sb', indicating which branch of the network to use.
 
         Returns:
-            torch.Tensor: Output feature map tensor of shape `(B, 512, 14, 14)`.
+            torch.Tensor: Output feature map tensor of shape `(B, 512, 19, 19)`.
         """
             
         # --- BLOCK 1 ---

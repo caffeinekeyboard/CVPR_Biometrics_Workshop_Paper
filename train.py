@@ -20,6 +20,8 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-4, help="Initial learning rate")
     parser.add_argument('--num_workers', type=int, default=4, help="Number of dataloader workers")
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu', help="Device to train on")
+    parser.add_argument('--grid_size', type=int, default=4, help="Grid size for control points in non-linear alignment")
+    parser.add_argument('--noise_levels', default=None, nargs='+', help="List of noise levels to include in training (e.g., --noise_levels Noise_Level_10 Noise_Level_20)")
     return parser.parse_args()
 
 
@@ -110,10 +112,10 @@ def main():
         data_root=args.data_root, 
         batch_size=args.batch_size, 
         num_workers=args.num_workers,
-        noise_levels = ['Noise_Level_0']
+        noise_levels = args.noise_levels
     )
     
-    model = GumNet(in_channels=1).to(args.device)
+    model = GumNet(in_channels=1, grid_size=args.grid_size).to(args.device)
     
     criterion = NonLinearAlignmentLoss(eps=1e-8).to(args.device)
     optimizer = optim.Adam([
