@@ -21,6 +21,8 @@ def test_model_initialization(feature_extractor):
     assert isinstance(feature_extractor, GumNetFeatureExtractionMP)
     assert hasattr(feature_extractor, 'shared_conv1')
     assert hasattr(feature_extractor, 'pool4')
+    # Validating the injection of the Adaptive Max Pool layer
+    assert hasattr(feature_extractor, 'adaptive_pool')
     assert hasattr(feature_extractor, 'l2_norm')
 
 # -----------------------------------------------------------------------------
@@ -35,7 +37,7 @@ def test_forward_pass_dimensions(feature_extractor):
     with torch.no_grad():
         output = feature_extractor(dummy_input, branch='Sa')
 
-    expected_shape = (batch_size, 512, 19, 19)
+    expected_shape = (batch_size, 512, 14, 14)
 
     assert output.shape == expected_shape, \
         f"Expected output shape {expected_shape}, but got {output.shape}"
@@ -94,8 +96,8 @@ def test_siamese_variable_batch_sizes(feature_extractor):
         out_1 = feature_extractor(batch_1, branch='Sa')
         out_4 = feature_extractor(batch_4, branch='Sb')
 
-    assert out_1.shape == (1, 512, 19, 19)
-    assert out_4.shape == (4, 512, 19, 19)
+    assert out_1.shape == (1, 512, 14, 14)
+    assert out_4.shape == (4, 512, 14, 14)
     
 # -----------------------------------------------------------------------------
 # 5. ARCHITECTURAL ROUTING & PARAMETER SHARING TESTS
@@ -105,6 +107,8 @@ def test_branch_specific_batchnorm_gradients():
     model = GumNetFeatureExtractionMP(in_channels=1)
     model.train()
     dummy_input = torch.randn(2, 1, 192, 192)
+    
+    # Check Sa branch updates
     out_sa = model(dummy_input, branch='Sa')
     loss_sa = out_sa.mean()
     loss_sa.backward()
@@ -116,6 +120,7 @@ def test_branch_specific_batchnorm_gradients():
         assert torch.abs(model.bn1_sb.weight.grad).sum() == 0, \
             "bn1_sb received gradients during an 'Sa' forward pass. Branch isolation failed."
 
+    # Check Sb branch updates
     model.zero_grad()
     out_sb = model(dummy_input, branch='Sb')
     loss_sb = out_sb.mean()
@@ -128,26 +133,29 @@ def test_branch_specific_batchnorm_gradients():
         assert torch.abs(model.bn1_sa.weight.grad).sum() == 0, \
             "bn1_sa received gradients during an 'Sb' forward pass. Branch isolation failed."
 
-
 def test_shared_convolution_gradient_accumulation():
     model = GumNetFeatureExtractionMP(in_channels=1)
     model.train()
     dummy_input = torch.randn(2, 1, 192, 192)
+    
     model.zero_grad()
     out_sa = model(dummy_input, branch='Sa')
     out_sa.mean().backward()
     assert model.shared_conv1.weight.grad is not None
     grad_conv1_sa = model.shared_conv1.weight.grad.clone()
+    
     model.zero_grad()
     out_sb = model(dummy_input, branch='Sb')
     out_sb.mean().backward()
     assert model.shared_conv1.weight.grad is not None
     grad_conv1_sb = model.shared_conv1.weight.grad.clone()
+    
     model.zero_grad()
     out_sa_combined = model(dummy_input, branch='Sa')
     out_sb_combined = model(dummy_input, branch='Sb')
     combined_loss = out_sa_combined.mean() + out_sb_combined.mean()
     combined_loss.backward()
+    
     assert model.shared_conv1.weight.grad is not None
     grad_conv1_combined = model.shared_conv1.weight.grad.clone()
     expected_combined_grad = grad_conv1_sa + grad_conv1_sb
@@ -155,20 +163,22 @@ def test_shared_convolution_gradient_accumulation():
     assert torch.allclose(grad_conv1_combined, expected_combined_grad, atol=1e-5), \
         "Convolutional layers are not correctly sharing gradients across branches."
 
-
 def test_forward_pass_batchnorm_isolation():
     model = GumNetFeatureExtractionMP(in_channels=1)
     model.eval()
     dummy_input = torch.randn(4, 1, 192, 192)
+    
     with torch.no_grad():
         assert model.bn1_sa.running_mean is not None
         model.bn1_sa.running_mean.fill_(100.0)
         assert model.bn1_sa.running_var is not None
         model.bn1_sa.running_var.fill_(0.1)
+        
         assert model.bn1_sb.running_mean is not None
         model.bn1_sb.running_mean.fill_(-100.0)
         assert model.bn1_sb.running_var is not None
         model.bn1_sb.running_var.fill_(0.1)
+        
         out_sa = model(dummy_input, branch='Sa')
         out_sb = model(dummy_input, branch='Sb')
 

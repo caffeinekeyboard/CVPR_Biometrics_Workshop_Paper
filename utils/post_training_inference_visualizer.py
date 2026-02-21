@@ -8,10 +8,10 @@ from PIL import Image
 from model.gumnet import GumNet
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-CHECKPOINT_PATH = './checkpoints/gumnet_2d_best_noise_level_10_4x4.pth'
+CHECKPOINT_PATH = './checkpoints/gumnet_2d_best_noise_level_0_8x8_200.pth'
 OUTPUT_DIR = './inference_plots'
-TARGET_NOISE_LEVEL = 'Noise_Level_10'
-GRID_SIZE = 4  # Adjust this to match your checkpoint
+TARGET_NOISE_LEVEL = 'Noise_Level_0'
+GRID_SIZE = 8  # Adjust this to match your checkpoint
 
 def load_and_preprocess_image(image_path):
     transform = T.Compose([
@@ -148,7 +148,7 @@ def process_all_test_images():
                 continue
             
             # Create output path
-            output_path = Path(OUTPUT_DIR) / category_name / (TARGET_NOISE_LEVEL + '_4x4') / f'{test_image_name}.png'
+            output_path = Path(OUTPUT_DIR) / category_name / (TARGET_NOISE_LEVEL + '_8x8_200') / f'{test_image_name}.png'
             
             try:
                 main(str(template_path), str(test_image_path), str(output_path))

@@ -7,11 +7,6 @@ class GumNet(nn.Module):
     """
     Complete GumNet architecture for fingerprint matching with non-linear spatial alignment.
 
-    This model composes feature extraction, siamese correlation matching, and a
-    non-linear spatial alignment module (`GumNetNonLinearAlignment`) that predicts
-    a small grid of control-point displacements and warps the impression via a
-    dense flow field (bicubic upsampling + `grid_sample`).
-
     Args:
         in_channels (int, optional): Number of input channels for images. Defaults to 1.
 
