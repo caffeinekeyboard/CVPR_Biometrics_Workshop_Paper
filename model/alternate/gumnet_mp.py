@@ -1,5 +1,5 @@
 import torch.nn as nn
-from model.alternate.gumnet_feature_extraction_ap import GumNetFeatureExtractionMP
+from model.alternate.gumnet_feature_extraction_mp import GumNetFeatureExtractionMP
 from model.gumnet_siamese_matching import GumNetSiameseMatching
 from model.gumnet_non_linear_alignment import GumNetNonLinearAlignment
 
