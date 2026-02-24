@@ -1,14 +1,13 @@
 import torch
 from typing import List
-import warnings
 
 
 def minutiae_metric(
     minutiae_list_1: List[torch.Tensor],
     minutiae_list_2: List[torch.Tensor],
-    distance_threshold: float = 10.0,
-    angle_threshold: float = 0.5,
-    match_ratio_threshold: float = 0.3,
+    distance_threshold: float = 6.0,
+    angle_threshold: float = 0.2,
+    match_ratio_threshold: float = 0.0,
 ) -> torch.Tensor:
     """
     Compute pairwise fingerprint matching scores from minutiae (assumes aligned).

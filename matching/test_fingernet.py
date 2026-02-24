@@ -1,33 +1,55 @@
 import os
 import torch
 import torch.nn.functional as F
-import cv2
+from PIL import Image
+import torchvision.transforms as transforms
 from fingernet import FingerNet
 from fingernet_wrapper import FingerNetWrapper
 from torchsummary import summary
 
-# Limit threads to avoid hangs during summary/model introspection
-# os.environ.setdefault('OMP_NUM_THREADS', '1')
-# os.environ.setdefault('MKL_NUM_THREADS', '1')
-# torch.set_num_threads(1)
-# torch.set_num_interop_threads(1)
 
 # Resolve paths relative to this script so the script works from any CWD
 _SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
-_IMAGE_PATH = os.path.abspath(os.path.join(_SCRIPT_DIR, '..', 'assets', 'anguli_fingerprint.png'))
+_IMAGE_PATH = os.path.abspath(
+    os.path.join(
+        _SCRIPT_DIR,
+        '..',
+        'data',
+        'FCV',
+        'FVC2004',
+        'Dbs',
+        'DB1_A',
+        '1_1.tif',
+    )
+)
 _MODEL_PATH = os.path.abspath(os.path.join(_SCRIPT_DIR, 'fingernet.pth'))
 
-im = cv2.imread(_IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
-if im is None:
-    raise FileNotFoundError(f"Could not load image at {_IMAGE_PATH}. verify the file exists")
+_TRANSFORM = transforms.Compose([
+    transforms.Grayscale(num_output_channels=1),
+    transforms.Pad(padding=(62, 0, 63, 0), fill=255),
+    transforms.Resize((192, 192)),
+    transforms.RandomInvert(p=1.0),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5], std=[0.5]),
+])
 
-# Convert image to tensor and add batch dimension
-im_tensor = torch.from_numpy(im).float().unsqueeze(0).unsqueeze(0)  # Shape: (1, 1, H, W)
+im = Image.open(_IMAGE_PATH).convert("L")
+
+# Convert image to tensor, apply transforms, and add batch dimension
+im_tensor = _TRANSFORM(im).unsqueeze(0)  # type: ignore # Shape: (1, 1, H, W)
 
 def _pad_to_multiple(x: torch.Tensor, multiple: int = 8) -> torch.Tensor:
     _, _, h, w = x.shape
     pad_h = (multiple - (h % multiple)) % multiple
     pad_w = (multiple - (w % multiple)) % multiple
+    if pad_h == 0 and pad_w == 0:
+        return x
+    return F.pad(x, (0, pad_w, 0, pad_h), mode='replicate')
+
+def _pad_to_patch_multiple(x: torch.Tensor, patch_size: int) -> torch.Tensor:
+    _, _, h, w = x.shape
+    pad_h = (patch_size - (h % patch_size)) % patch_size
+    pad_w = (patch_size - (w % patch_size)) % patch_size
     if pad_h == 0 and pad_w == 0:
         return x
     return F.pad(x, (0, pad_w, 0, pad_h), mode='replicate')
@@ -55,7 +77,26 @@ def test2():
 
     wrapper.plot_minutiae(im_tensor, out, save_path='minutiae_detection.png')
 
+def test3(patch_size: int = 64):
+    model = FingerNet()
+    model.load_state_dict(torch.load(_MODEL_PATH, map_location='cpu'))
+    model.eval()
+    model.to('cpu')
+
+    padded = _pad_to_patch_multiple(im_tensor, patch_size)
+    _, c, h, w = padded.shape
+
+    patches = F.unfold(padded, kernel_size=patch_size, stride=patch_size)
+    patches = patches.transpose(1, 2).reshape(-1, c, patch_size, patch_size)
+
+    with torch.no_grad():
+        padded_patches = _pad_to_multiple(patches, 8)
+        _ = model(padded_patches)
+
+    print("FingerNet ran successfully on batch")
+
 
 if __name__ == '__main__':
     test2()
     test1()
+    test3()

@@ -21,7 +21,7 @@ settings = NbisExtractorSettings(
 )
 
 class Nbis(nn.Module):
-    def __init__(self, settings: NbisExtractorSettings):
+    def __init__(self, settings: NbisExtractorSettings = settings):
         super().__init__()
         self.extractor = nbis.new_nbis_extractor(settings)
     

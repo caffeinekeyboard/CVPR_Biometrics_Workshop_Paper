@@ -1,72 +1,141 @@
 import nbis
 from nbis import NbisExtractorSettings
 import os
-import cv2
+import torchvision.transforms as transforms
+from nbis_extractor import Nbis
+import torch
 import numpy as np
+import cv2
 
-# Resolve paths relative to this script
+
+# Resolve paths relative to this script so the script works from any CWD
 _SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
-_IMAGE_PATH = os.path.abspath(os.path.join(_SCRIPT_DIR, '..', 'assets', 'anguli_fingerprint.png'))
-
-# Configuration for the NbisExtractor
-settings = NbisExtractorSettings(
-    # Do not filter on minutiae quality (get all minutiae)
-    min_quality=0.0,
-    # Do not get the fingerprint center or ROI
-    get_center=False,
-    # Do not use SIVV to check if the image is a fingerprint
-    check_fingerprint=False,
-    # Compute the NFIQ2 quality score
-    compute_nfiq2=True,
-    # No specific PPI, use the default
-    ppi=None,
+_IMAGE_PATH = os.path.abspath(
+    os.path.join(
+        _SCRIPT_DIR,
+        '..',
+        'data',
+        'FCV',
+        'FVC2004',
+        'Dbs',
+        'DB1_A',
+        '1_1.tif',
+    )
 )
 
-extractor = nbis.new_nbis_extractor(settings)
 
-# Read the image and extract minutiae
-image_bytes = open(_IMAGE_PATH, "rb").read()
-minutiae = extractor.extract_minutiae(image_bytes)
+_TRANSFORM = transforms.Compose([
+    #transforms.Grayscale(num_output_channels=1),
+    transforms.Pad(padding=(62, 0, 63, 0), fill=255),
+    transforms.Resize((192, 192)),
+    #transforms.RandomInvert(p=1.0),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5], std=[0.5]),
+])
 
-# Get the list of minutiae points
-points = minutiae.get()
-print(f"Extracted {len(points)} minutiae points")
 
-# Load and display the image with minutiae
-img = cv2.imread(_IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
-if img is None:
-    raise FileNotFoundError(f"Could not load image at {_IMAGE_PATH}")
+def _load_single_image_tensor() -> "torch.Tensor":
 
-# Create visualization
-canvas = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    from PIL import Image
 
-# Plot minutiae points
-for i, minutia in enumerate(points):
-    x = int(minutia.x())
-    y = int(minutia.y())
-    angle = np.radians(minutia.angle())  # Convert to radians
-    kind = minutia.kind()
+    im = Image.open(_IMAGE_PATH).convert("L")
+    im_tensor = _TRANSFORM(im).unsqueeze(0) # type: ignore
+    return im_tensor
+
+
+def _save_minutiae_visualization(
+    original_image: torch.Tensor,
+    outputs: dict,
+    save_path: str,
+    denormalize: bool = True,
+    mean: float = 0.5,
+    std: float = 0.5,
+):
+    """
+    Save the original image with detected minutiae points (NBIS).
+    """
+    if original_image.ndim == 4:
+        img = original_image[0, 0].cpu().numpy()
+    elif original_image.ndim == 3:
+        img = original_image[0].cpu().numpy()
+    elif original_image.ndim == 2:
+        img = original_image.cpu().numpy()
+    else:
+        raise ValueError(f"Unexpected image shape: {original_image.shape}")
+
+    img = img.astype(np.float32)
+    if denormalize and img.max() <= 1.5:
+        if img.min() < 0:
+            img = img * std + mean
+        img = np.clip(img, 0.0, 1.0)
+        img_norm = (img * 255.0).astype(np.uint8)
+    else:
+        img_norm = np.clip(img, 0.0, 255.0).astype(np.uint8)
+
+    minutiae = outputs['minutiae'][0].cpu().numpy()
+
+    h, w = img_norm.shape
+    canvas = cv2.cvtColor(img_norm, cv2.COLOR_GRAY2BGR)
+
+    shown_count = 0
+    if len(minutiae) > 0:
+        for i in range(len(minutiae)):
+            x = int(minutiae[i, 0])
+            y = int(minutiae[i, 1])
+            angle = float(minutiae[i, 2])
+
+            if x < 0 or y < 0 or x >= w or y >= h:
+                continue
+            shown_count += 1
+
+            cv2.circle(canvas, (x, y), 3, (0, 0, 255), -1)
+
+            arrow_length = 15
+            end_x = int(x + arrow_length * np.cos(angle))
+            end_y = int(y + arrow_length * np.sin(angle))
+            cv2.arrowedLine(canvas, (x, y), (end_x, end_y), (0, 255, 255), 1, tipLength=0.3)
+
+    label = f"Minutiae: {shown_count}"
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    thickness = 1
+    text_size, _ = cv2.getTextSize(label, font, font_scale, thickness)
+    text_w, text_h = text_size
+    margin = 4
+    x0, y0 = 5, 5
+    x1, y1 = x0 + text_w + 2 * margin, y0 + text_h + 2 * margin
+    cv2.rectangle(canvas, (x0, y0), (x1, y1), (0, 0, 0), -1)
+    cv2.putText(canvas, label, (x0 + margin, y0 + text_h + margin),
+                font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+
+    cv2.imwrite(save_path, canvas)
+    print(f"Minutiae visualization saved to {save_path}")
+
+
+def test_single_image():
+
+    im_tensor = _load_single_image_tensor()
+    extractor = Nbis()
+
+    result = extractor(im_tensor)
+
+    assert result is not None
+    save_path = os.path.join(_SCRIPT_DIR, 'nbis_minutiae.png')
+    _save_minutiae_visualization(im_tensor, result, save_path)
+    print("NBIS single-image extraction ran successfully")
+
+
+def test_batch_images(batch_size: int = 8):
+
+    im_tensor = _load_single_image_tensor().repeat(batch_size, 1, 1, 1)
+    extractor = Nbis()
     
-    # Draw minutiae point (red circle)
-    cv2.circle(canvas, (x, y), 3, (0, 0, 255), -1)
-    
-    # Draw orientation line (yellow arrow)
-    arrow_length = 15
-    end_x = int(x + arrow_length * np.cos(angle))
-    end_y = int(y + arrow_length * np.sin(angle))
-    cv2.arrowedLine(canvas, (x, y), (end_x, end_y), (0, 255, 255), 1, tipLength=0.3)
+    results = extractor(im_tensor)
 
-# Add text labels
-cv2.putText(canvas, f'NBIS Minutiae Detection: {len(points)} points', 
-           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    assert (results is not None)
+    print("NBIS batch extraction ran successfully")
 
-# Save visualization
-output_path = os.path.join(_SCRIPT_DIR, 'nbis_minutiae_detection.png')
-cv2.imwrite(output_path, canvas)
-print(f"Visualization saved to {output_path}")
 
-# Print first few minutiae for verification
-print("\nFirst 5 minutiae points:")
-for i in range(min(5, len(points))):
-    p = points[i]
-    print(f"  {i+1}. x={p.x()}, y={p.y()}, angle={p.angle()}°, kind={p.kind()}, reliability={p.reliability():.4f}")
+if __name__ == '__main__':
+    test_single_image()
+    test_batch_images()

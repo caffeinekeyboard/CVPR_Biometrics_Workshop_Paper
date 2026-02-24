@@ -12,7 +12,7 @@ if _PROJECT_ROOT not in sys.path:
 from datasets.no_split_dataloader import get_no_split_dataloader
 from matching.matcher import matcher
 from matching.matching_performance import fcv_frr
-from matching_metrics import hybrid_metric
+from matching_metrics import hybrid_metric, minutiae_metric
 from matching.fingernet_wrapper import FingerNetWrapper
 from matching.fingernet import FingerNet
 from model.gumnet import GumNet
@@ -41,7 +41,7 @@ def build_matcher(device: torch.device, use_mask: bool = False) -> matcher:
 	fingernet = fingernet_init()
 	fingernet.to(device)
 	extractor = FingerNetWrapper(fingernet, minutiae_threshold=0.5, max_candidates=500).to(device)
-	model = matcher(alignment, extractor, hybrid_metric, fcv_frr, mask=use_mask)
+	model = matcher(alignment, extractor, minutiae_metric, fcv_frr, mask=use_mask)
 	model.eval()
 	return model
 

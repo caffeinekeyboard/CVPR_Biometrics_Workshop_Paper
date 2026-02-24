@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 
 class FingerNetWrapper(nn.Module):
-    def __init__(self, model: FingerNet, minutiae_threshold: float = 0.5, max_candidates: int = 1500):
+    def __init__(self, model: FingerNet, minutiae_threshold: float = 0.1, max_candidates: int = 100):
         super().__init__()
         self.fingernet = model
         self.default_minutiae_threshold = minutiae_threshold
@@ -62,7 +62,15 @@ class FingerNetWrapper(nn.Module):
     def postprocess(self, outputs: dict, threshold: float, max_candidates: int | None) -> dict[str, torch.Tensor]:
         return postprocess(outputs, threshold, max_candidates)
 
-    def plot_minutiae(self, original_image: torch.Tensor, outputs: dict, save_path='minutiae_detection.png'):
+    def plot_minutiae(
+        self,
+        original_image: torch.Tensor,
+        outputs: dict,
+        save_path: str = 'minutiae_detection.png',
+        denormalize: bool = True,
+        mean: float = 0.5,
+        std: float = 0.5,
+    ):
         """
         Plot the original image and detected minutiae points using OpenCV.
         
@@ -81,41 +89,57 @@ class FingerNetWrapper(nn.Module):
         else:
             raise ValueError(f"Unexpected image shape: {original_image.shape}")
         
-        # Normalize to 0-255
-        img_norm = ((img - img.min()) / (img.max() - img.min()) * 255).astype(np.uint8)
+        # Convert to a displayable 0-255 uint8 image
+        img = img.astype(np.float32)
+        if denormalize and img.max() <= 1.5:
+            # Handle inputs normalized with mean/std (e.g., [-1, 1]) or [0, 1]
+            if img.min() < 0:
+                img = img * std + mean
+            img = np.clip(img, 0.0, 1.0)
+            img_norm = (img * 255.0).astype(np.uint8)
+        else:
+            img_norm = np.clip(img, 0.0, 255.0).astype(np.uint8)
         
         # Get minutiae points (first batch if multiple)
         minutiae = outputs['minutiae'][0].cpu().numpy()
         
-        # Create side-by-side visualization
+        # Create visualization (single image with minutiae)
         h, w = img_norm.shape
-        canvas = np.zeros((h, w * 2, 3), dtype=np.uint8)
+        canvas = cv2.cvtColor(img_norm, cv2.COLOR_GRAY2BGR)
         
-        # Left: original image
-        canvas[:, :w] = cv2.cvtColor(img_norm, cv2.COLOR_GRAY2BGR)
-        
-        # Right: image with minutiae
-        canvas[:, w:] = cv2.cvtColor(img_norm, cv2.COLOR_GRAY2BGR)
-        
+        shown_count = 0
         if len(minutiae) > 0:
             for i in range(len(minutiae)):
                 x = int(minutiae[i, 0])
                 y = int(minutiae[i, 1])
                 angle = float(minutiae[i, 2])
+
+                if x < 0 or y < 0 or x >= w or y >= h:
+                    continue
+                shown_count += 1
                 
                 # Draw minutiae point
-                cv2.circle(canvas, (w + x, y), 3, (0, 0, 255), -1)
+                cv2.circle(canvas, (x, y), 3, (0, 0, 255), -1)
                 
                 # Draw orientation line
                 arrow_length = 15
-                end_x = int(w + x + arrow_length * np.cos(angle))
+                end_x = int(x + arrow_length * np.cos(angle))
                 end_y = int(y + arrow_length * np.sin(angle))
-                cv2.arrowedLine(canvas, (w + x, y), (end_x, end_y), (0, 255, 255), 1, tipLength=0.3)
+                cv2.arrowedLine(canvas, (x, y), (end_x, end_y), (0, 255, 255), 1, tipLength=0.3)
         
-        # Add text labels
-        cv2.putText(canvas, 'Original Image', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        cv2.putText(canvas, f'Detected Minutiae ({len(minutiae)} points)', (w + 10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        # Add compact text labels for small images (e.g., 192x192)
+        label = f'Minutiae: {shown_count}'
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.5
+        thickness = 1
+        text_size, _ = cv2.getTextSize(label, font, font_scale, thickness)
+        text_w, text_h = text_size
+        margin = 4
+        x0, y0 = 5, 5
+        x1, y1 = x0 + text_w + 2 * margin, y0 + text_h + 2 * margin
+        cv2.rectangle(canvas, (x0, y0), (x1, y1), (0, 0, 0), -1)
+        cv2.putText(canvas, label, (x0 + margin, y0 + text_h + margin),
+                font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
         
         # Save the image
         cv2.imwrite(save_path, canvas)
