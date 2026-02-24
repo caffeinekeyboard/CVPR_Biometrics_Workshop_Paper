@@ -1,11 +1,11 @@
 import torch.nn as nn
-from model.gumnet_feature_extraction import GumNetFeatureExtraction
+from model.alternate.gumnet_feature_extraction_mp import GumNetFeatureExtractionMP
 from model.gumnet_siamese_matching import GumNetSiameseMatching
 from model.gumnet_non_linear_alignment import GumNetNonLinearAlignment
 
 class GumNet(nn.Module):
     """
-    Complete GumNet architecture for fingerprint matching with non-linear spatial alignment.
+    Complete GumNet Max Pooling architecture for fingerprint matching with non-linear spatial alignment.
 
     Args:
         in_channels (int, optional): Number of input channels for images. Defaults to 1.
@@ -34,7 +34,7 @@ class GumNet(nn.Module):
     def __init__(self, in_channels=1, grid_size=4):
         super(GumNet, self).__init__()
 
-        self.feature_extractor = GumNetFeatureExtraction(in_channels=in_channels)
+        self.feature_extractor = GumNetFeatureExtractionMP(in_channels=in_channels)
         self.siamese_matcher = GumNetSiameseMatching()
         self.spatial_aligner = GumNetNonLinearAlignment(grid_size=grid_size)
 
