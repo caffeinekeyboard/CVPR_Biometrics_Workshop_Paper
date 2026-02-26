@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Tuple
 
-class TestDataLogic:
+class TestDataLogic1:
     def __init__(self):
         self.idx_per_set = (8*7) // 2
         self.next_set = False
@@ -29,11 +29,38 @@ class TestDataLogic:
         impression_idx = current_set * 8 + 8 - self.running_max
 
         return impression_idx, template_idx
+
+class TestDataLogic2:
+    def __init__(self):
+        self.num_images = 10*8
+        self.paths = []
+        self.data = np.arange(16)
+        self.pair_indices = []
+        for idx in range(self.num_images * 8):
+            impression_idx = idx // 8
+            next_set = idx // 64
+            template_idx = idx - impression_idx * 8 + next_set * 8
+
+            self.pair_indices.append((impression_idx, template_idx))
     
-if __name__ == "__main__":
-    test_logic = TestDataLogic()
+
+    def get_item(self, idx: int) -> Tuple[int, int]:
+        return self.pair_indices[idx]
+
+def testlogic1():
+    test_logic = TestDataLogic1()
     matrix = np.zeros((16, 16), dtype=int)
     for idx in range(56):
         impression, template = test_logic.get_item(idx)
         matrix[impression, template] = idx + 1
     print(matrix)
+
+def testlogic2():
+    test_logic = TestDataLogic2()
+    list = []
+    for idx in range(10 * 8 * 8):
+        list.append(test_logic.get_item(idx))
+    print(list[120:150])
+
+if __name__ == "__main__":
+    testlogic2()

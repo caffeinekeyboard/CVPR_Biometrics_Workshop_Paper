@@ -28,24 +28,29 @@ class matcher(nn.Module):
     def forward(self, img1: torch.Tensor, img2: torch.Tensor, orig_img1: torch.Tensor, orig_img2: torch.Tensor) -> torch.Tensor:
         if self.gumnet:
             _, control_points = self.alignment(img1, img2) # type: ignore
-            alignment1 = warp_original(orig_img1, control_points)
+            alignment2 = warp_original(orig_img2, control_points)
         else:
-            alignment1 = self.alignment(img1, img2)
+            alignment2 = self.alignment(img1, img2)
         print("Alignment done.")
-        extractor1 = self.extractor(alignment1)
-        extractor2 = self.extractor(orig_img2)
+        extractor2 = self.extractor(alignment2)
+        extractor1 = self.extractor(orig_img1)
         print("Feature extraction done.")
-        score = self.metric(alignment1, orig_img2, extractor1, extractor2, alpha=1.0, beta=0.0, delta=0.0, mask=self.mask)
+        if not extractor1['minutiae']:
+            print("Extractor1 empty!")
+        if not extractor2['minutiae']:
+            print("Extractor2 empty!")
+        #score = self.metric(alignment1, orig_img2, extractor1, extractor2, alpha=1.0, beta=0.0, delta=0.0, mask=self.mask)
 
         self._last_intermediates = {
-            "alignment1": self._detach_tree(alignment1),
+            "alignment2": self._detach_tree(alignment2),
             "origninal_img": self._detach_tree(orig_img2),
             "extractor1": self._detach_tree(extractor1),
             "extractor2": self._detach_tree(extractor2),
         }
         
-        performance = self.performance(score)
-        return performance
+        finished = torch.ones(1)
+        #performance = self.performance(score)
+        return finished
 
     def save_intermediates(self, file_path: str) -> None:
         if self._last_intermediates is None:

@@ -11,9 +11,9 @@ if _PROJECT_ROOT not in sys.path:
 	sys.path.insert(0, _PROJECT_ROOT)
 
 from datasets.no_split_dataloader import get_no_split_dataloader
-from matching.matcher import matcher
+from matching.matcher import matcher, warp_original
 from matching.matching_performance import fcv_frr
-from matching_metrics import hybrid_metric, minutiae_metric
+from matching_metrics import hybrid_metric, minutiae_metric, matching, calculate_true_matches
 from matching.fingernet_wrapper import FingerNetWrapper
 from matching.fingernet import FingerNet
 from model.gumnet import GumNet
@@ -21,6 +21,10 @@ from datasets.eval_loader_data import EvalDataset, get_eval_dataloader
 from datasets.original_data import OrigDataset, get_orig_dataloader
 from datasets.accuracy_orig_data import AccDatasetOrig, get_acc_orig_dataloader
 from datasets.accuracy_eval_data import AccDatasetEval, get_acc_eval_dataloader
+from datasets.seq_orig_data import get_seq_orig_dataloader
+from datasets.seq_eval_data import get_seq_eval_dataloader
+from datasets.full_orig_data import get_full_orig_dataloader
+from datasets.full_eval_data import get_full_eval_dataloader
 from nbis_extractor import Nbis
 
 
@@ -45,21 +49,6 @@ def fingernet_init():
 	fingernet.load_state_dict(torch.load(FN_WEIGHTS_PATH, map_location='cpu'))
 	return fingernet
 
-def build_matcher(device: torch.device, use_mask: bool = False) -> matcher:
-	alignment = gumnet_init(device)
-	print("1/4 Gumnet built.")
-	#fingernet = fingernet_init()
-	#print("2/4 FingerNet built.")
-	#extractor = FingerNetWrapper(fingernet, minutiae_threshold=0.1, max_candidates=100)
-	#print("3/4 FingerNet wrapper built.")
-	extractor = Nbis()
-	print("2+3/4 Nbis extractor built.")
-	model = matcher(alignment, extractor, hybrid_metric, fcv_frr, mask=use_mask, gumnet=True)
-	print("4/4 Matcher built.")
-	model.to(device)
-	model.eval()
-	return model
-
 def run_inference(
 	data_root: str,
 	batch_size: int = 10*8,
@@ -75,47 +64,70 @@ def run_inference(
 	
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-	print("Building matcher model...")
-	model = build_matcher(device=device)
+	print("Building model...")
+	alignment = gumnet_init(device)
+	extractor = Nbis().to(device)
 	
 	print("Creating dataloaders...")
-	loader1 = get_acc_eval_dataloader(
+	template_loader_GN = get_seq_eval_dataloader(
+		data_root=data_root,
+		batch_size=1,
+		num_workers=num_workers,
+	)
+	template_loader_orig = get_seq_orig_dataloader(
+		data_root=data_root,
+		batch_size=1,
+		num_workers=num_workers,
+	)
+	impression_loader_GN =  get_full_eval_dataloader(
 		data_root=data_root,
 		batch_size=batch_size,
 		num_workers=num_workers,
 	)
-	loader2 = get_acc_orig_dataloader(
+	impression_loader_orig =  get_full_orig_dataloader(
 		data_root=data_root,
 		batch_size=batch_size,
 		num_workers=num_workers,
 	)
 
 	print("Running inference...")
-	all_scores = []
+	all_true_matches = 0
+	all_true_rejections = 0
 	with torch.inference_mode():
-		for batch_idx, (batch1, batch2) in enumerate(zip(loader1, loader2)):
-			Sa = batch1["Sa"].to(device)
-			Sb = batch1["Sb"].to(device)
-			orig_Sa = batch2["Sa"].to(device)
-			orig_Sb = batch2["Sb"].to(device)
-			scores = model(Sa, Sb, orig_Sa, orig_Sb)
-			model.save_intermediates(f"intermediates_batch_{batch_idx}.pt")
-			if not isinstance(scores, torch.Tensor):
-				scores = torch.tensor(scores, dtype=torch.float32)
-			all_scores.append(scores.detach().cpu())
-
-			if max_batches is not None and (batch_idx + 1) >= max_batches:
+		SB = iter(impression_loader_GN)
+		ORIG_SB = iter(impression_loader_orig)
+		impressions_gn = next(SB)
+		impressions_orig = next(ORIG_SB)
+		for template_idx, (template_gn, template_orig) in enumerate(zip(template_loader_GN, template_loader_orig)):
+			if max_batches is not None and template_idx >= max_batches:
 				break
-	
+			if template_idx == 10:
+				break
+			current_set = template_idx // 8
+			Sb = impressions_gn["Sb"].to(device)
+			orig_Sb = impressions_orig["Sb"].to(device)
+			Sa = template_gn["Sa"].to(device)
+			Sa = Sa.expand(Sb.shape[0], *Sa.shape[1:]).contiguous()
+			orig_Sa = template_orig["Sa"].to(device)
+
+			_, control_points = alignment(Sa, Sb)
+			Sb_aligned = warp_original(orig_Sb, control_points)
+			Sa_features = extractor(orig_Sa)
+			Sb_features = extractor(Sb_aligned)
+
+			score_tensor = matching(Sa_features, Sb_features, threshold=0.5)
+			true_matches, true_rejections, _, _ = calculate_true_matches(current_set*8, (current_set+1)*8, score_tensor)
+			all_true_matches += true_matches
+			all_true_rejections += true_rejections
+
+			print(f"True Matches: {true_matches}, True Rejections: {true_rejections}")
+
 	print("Inference completed.")
 	print("Calculating performance...")
-	if all_scores:
-		scores_tensor = torch.cat([
-			s.view(-1) if isinstance(s, torch.Tensor) else torch.tensor([s], dtype=torch.float32)
-			for s in all_scores
-		], dim=0)
-		print(f"Processed {scores_tensor.numel()} samples.")
-		print(f"Performance: {scores_tensor.mean().item():.4f}")
+
+	verification_accuracy = (all_true_matches + all_true_rejections) / (10*8*10*8)
+	print(f"Verification Accuracy: {verification_accuracy:.4f}")
+
 
 
 if __name__ == "__main__":

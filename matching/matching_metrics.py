@@ -2,6 +2,67 @@ import torch
 from typing import List
 
 
+def cross_correlations(batch1: torch.Tensor, batch2: torch.Tensor) -> torch.Tensor:
+    """
+    Compute normalized cross-correlation for aligned batches of images.
+
+    Args:
+        batch1: Tensor of shape (B, ...) images
+        batch2: Tensor of shape (B, ...) images
+
+    Returns:
+        Tensor of shape (B,) with per-pair similarities in [-1, 1].
+    """
+    if batch1.shape[0] != batch2.shape[0]:
+        raise ValueError("batch1 and batch2 must have the same batch size")
+
+    b = batch1.shape[0]
+    vec1 = batch1.view(b, -1)
+    vec2 = batch2.view(b, -1)
+
+    vec1_norm = torch.nn.functional.normalize(vec1, p=2, dim=1)
+    vec2_norm = torch.nn.functional.normalize(vec2, p=2, dim=1)
+
+    similarity = (vec1_norm * vec2_norm).sum(dim=1)
+    return similarity
+
+def calculate_true_matches(a, b, score_tensor: torch.Tensor):
+    true_matches = 0
+    true_rejections = 0
+    false_rejections = 0
+    false_matches = 0
+
+    mask = torch.zeros(score_tensor.shape[0], dtype=torch.bool)
+    mask[a:b] = True
+    for i in score_tensor[mask]:
+        if i == 1:
+            true_matches += 1
+    for i in score_tensor[~mask]:
+        if i == 0:
+            true_rejections += 1
+    for i in score_tensor[mask]:
+        if i == 0:
+            false_rejections += 1
+    for i in score_tensor[~mask]:
+        if i == 1:
+            false_matches += 1
+    return true_matches, true_rejections, false_rejections, false_matches
+    
+
+
+def matching(features1, features2, threshold: float = 0.5):
+    minutiae = features1['minutiae']
+    minutiae_list = features2['minutiae']
+    orientation = features1['orientation_field']
+    orientation_list = features2['orientation_field']
+    matches = torch.zeros(len(minutiae_list))
+    for i in range(len(minutiae_list)):
+        score1 = _compute_match_score(minutiae[0], minutiae_list[i], dist_thresh=6.0, angle_thresh=0.2, ratio_thresh=0.0)
+        score2 = _compute_orientation_similarity(orientation[0], orientation_list[i], angle_threshold=torch.pi/6)
+        score = 0.5 * score1 + 0.5 * score2
+        matches[i] = (score>threshold)
+    return matches
+
 def minutiae_metric(
     minutiae_list_1: List[torch.Tensor],
     minutiae_list_2: List[torch.Tensor],
@@ -20,12 +81,11 @@ def minutiae_metric(
     score_matrix = torch.zeros(batch_size_1, batch_size_2, device=device)
     
     for i in range(batch_size_1):
-        for j in range(batch_size_2):
-            m1, m2 = minutiae_list_1[i], minutiae_list_2[j]
-            if m1.shape[0] > 0 and m2.shape[0] > 0:
-                score_matrix[i, j] = _compute_match_score(
-                    m1, m2, distance_threshold, angle_threshold, match_ratio_threshold
-                )
+        m1, m2 = minutiae_list_1[i], minutiae_list_2[i]
+        if m1.shape[0] > 0 and m2.shape[0] > 0:
+            score_matrix[i, i] = _compute_match_score(
+                m1, m2, distance_threshold, angle_threshold, match_ratio_threshold
+            )
     
     return score_matrix
 
@@ -73,6 +133,65 @@ def _count_matches(
     return match_count
 
 
+def average_minutiae_match_distance(
+    minutiae_list_1: List[torch.Tensor],
+    minutiae_list_2: List[torch.Tensor],
+):
+    """
+    Compute average matched distance per pair of minutiae sets using greedy closest matching.
+
+    For each pair (minutiae_list_1[i], minutiae_list_2[i]), repeatedly match the closest
+    remaining minutiae between the two sets until one set is exhausted. The result is the
+    average distance of all matched pairs for each batch item.
+
+    Args:
+        minutiae_list_1: List of minutiae tensors, shape (N_i, >=2)
+        minutiae_list_2: List of minutiae tensors, shape (M_i, >=2)
+
+    Returns:
+        torch.Tensor of shape (batch_size,) with average distances. If no matches, 0.0.
+    """
+    batch_size = min(len(minutiae_list_1), len(minutiae_list_2))
+    device = minutiae_list_1[0].device if batch_size > 0 else "cpu"
+    avg_distances = torch.zeros(batch_size, device=device, dtype=torch.float32)
+    avg_distance = 0.0
+
+    for i in range(batch_size):
+        m1 = minutiae_list_1[i]
+        m2 = minutiae_list_2[i]
+        if m1.numel() == 0 or m2.numel() == 0:
+            avg_distances[i] = torch.tensor(0.0, device=device)
+            continue
+
+        coords_1 = m1[:, :2]
+        coords_2 = m2[:, :2]
+
+        distances = torch.cdist(coords_1, coords_2, p=2)
+        num_matches = min(coords_1.shape[0], coords_2.shape[0])
+        matched_dists = []
+
+        distances_work = distances.clone()
+        for _ in range(num_matches):
+            min_val, min_idx = torch.min(distances_work.view(-1), dim=0)
+            if torch.isinf(min_val):
+                break
+            row = min_idx // distances_work.shape[1]
+            col = min_idx % distances_work.shape[1]
+            matched_dists.append(min_val)
+
+            distances_work[row, :] = torch.inf
+            distances_work[:, col] = torch.inf
+
+        if len(matched_dists) > 0:
+            avg_distances[i] = torch.stack(matched_dists).mean().to(torch.float32)
+        else:
+            avg_distances[i] = torch.tensor(0.0, device=device)
+    
+    avg_distance = avg_distances.mean().item() if batch_size > 0 else 0.0
+
+    return avg_distance
+
+
 def orientation_metric(
     orientation_list_1: List[torch.Tensor],
     orientation_list_2: List[torch.Tensor],
@@ -98,15 +217,14 @@ def orientation_metric(
     score_matrix = torch.zeros(batch_size_1, batch_size_2, device=device)
     
     for i in range(batch_size_1):
-        for j in range(batch_size_2):
-            ori_1 = orientation_list_1[i]
-            ori_2 = orientation_list_2[j]
-            mask_1 = mask_list_1[i] if mask_list_1 is not None else None
-            mask_2 = mask_list_2[j] if mask_list_2 is not None else None
-            
-            score_matrix[i, j] = _compute_orientation_similarity(
-                ori_1, ori_2, mask_1, mask_2, angle_threshold
-            )
+        ori_1 = orientation_list_1[i]
+        ori_2 = orientation_list_2[i]
+        mask_1 = mask_list_1[i] if mask_list_1 is not None else None
+        mask_2 = mask_list_2[i] if mask_list_2 is not None else None
+        
+        score_matrix[i, i] = _compute_orientation_similarity(
+            ori_1, ori_2, mask_1, mask_2, angle_threshold
+        )
     
     return score_matrix
 

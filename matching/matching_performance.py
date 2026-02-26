@@ -24,7 +24,7 @@ def compute_far_frr(score_matrix: torch.Tensor, threshold: float) -> Tuple[float
     
     return far, frr
 
-def fcv_frr(score_matrix: torch.Tensor, threshold: float = 0.54) -> torch.Tensor:
+def fcv_frr(score_matrix: torch.Tensor, threshold: float = 0.3, mask: bool = False) -> torch.Tensor:
     """Compute the FCV competition specific FRR for a given threshold.
     
     Args:
@@ -34,9 +34,12 @@ def fcv_frr(score_matrix: torch.Tensor, threshold: float = 0.54) -> torch.Tensor
     Returns:
         FRR, where FRR is the genuine rejection rate
     """
-    n, m = score_matrix.shape[0], score_matrix.shape[1]
-    mask = design_mask(n,m)
-    genuine_scores = score_matrix[mask]
+    if mask:
+        n, m = score_matrix.shape[0], score_matrix.shape[1]
+        interest_range = design_mask(n,m)
+        genuine_scores = score_matrix[interest_range]
+    else:
+        genuine_scores = torch.diag(score_matrix)
     
     frr = (genuine_scores < threshold).float().mean()
     
@@ -138,3 +141,12 @@ def compute_genuine_impostor_distributions(
     impostor_scores = score_matrix[~torch.eye(n, dtype=torch.bool, device=score_matrix.device)]
     
     return genuine_scores, impostor_scores
+
+def correct_match(score_matrix: torch.Tensor, idx: int):
+    correct = 0
+    diagonal = torch.diag(score_matrix)
+    match = torch.argmax(diagonal).item()
+    if match == idx:
+            correct = 1
+    return correct
+
