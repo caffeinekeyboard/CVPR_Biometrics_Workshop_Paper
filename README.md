@@ -3,14 +3,6 @@
 ### Unsupervised Dense Deformation Grid Prediction for Elastic Fingerprint Alignment
 
 
-<p align=\"center\">
-  <a href=\"#-overview\">Overview</a> •
-  <a href=\"#-key-contributions\">Contributions</a> •
-  <a href=\"#-architecture\">Architecture</a> •
-  <a href=\"#-results\">Results</a> •
-  <a href=\"#-quick-start\">Quick Start</a> •
-  <a href=\"#-citation\">Citation</a>
-</p>
 
 <br>
 
@@ -140,17 +132,6 @@ Our method demonstrates robust alignment across diverse conditions:
 </tr>
 </table>
 
-### Qualitative Results
-
-<div align=\"center\">
-
-| Template S<sub>a</sub> | Distorted S<sub>b</sub> | Aligned S<sub>b</sub>' | Deformation Field Φ |
-|:----------------------:|:-----------------------:|:----------------------:|:-------------------:|
-| <img src=\"assets/results/template.png\" width=\"120\"/> | <img src=\"assets/results/distorted.png\" width=\"120\"/> | <img src=\"assets/results/aligned.png\" width=\"120\"/> | <img src=\"assets/results/deformation.png\" width=\"120\"/> |
-
-<sub>Example alignment on a never-before-seen fingerprint pair. The predicted deformation field successfully rectifies non-linear elastic distortion.</sub>
-
-</div>
 
 <br>
 
