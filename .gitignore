@@ -4,9 +4,50 @@ deprecated_model.zip
 /data.zip
 /checkpoints
 fingernet.pth
-gumnet_2d_best_noise_level_0_8x8_200.pth
+gumnet_2d_best_noise_level_0_8x8_200.pth.zip
+/model/gumnet_2d_best
 intermediates_batch_*.pt
-__pycache__/
 /visualizations
 /batches
 batches.zip
+
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.pyre/
+.ruff_cache/
+.coverage
+coverage.xml
+.nox/
+.tox/
+.hypothesis/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Build / distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
