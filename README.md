@@ -18,8 +18,7 @@
 
 <br>
 
-<img src=\"assets/gumnet_pipeline.png\" alt=\"2D Gum-Net Pipeline\" width=\"95%\"/>
-
+<img src="assets/gumnet_pipeline.png" alt="2D Gum-Net Pipeline" width="95%"/>
 <sub><b>Figure 1.</b> The 2D Gum-Net pipeline: Given a template S<sub>a</sub> and distorted impression S<sub>b</sub>, our framework extracts features via DCT spectral pooling, computes bidirectional correlation maps, and predicts a dense deformation field for pixel-wise alignment—all without supervision.</sub>
 
 </div>
@@ -87,8 +86,7 @@ Effective mitigation of elastic torque and non-linear stretching, enabling subst
 ### 🔬 DCT Spectral Pooling: Why It Matters
 
 <div align=\"center\">
-<img src=\"assets/dct_viz.png" alt=\"DCT Spectral Pooling Comparison\" width=\"90%\"/>
-
+<img src="assets/dct_viz.png" alt="DCT Spectral Pooling Comparison" width="90%"/>
 <sub><b>Figure 2.</b> Comparison of pooling methods across subsampling factors (1:1 → 16:16). DCT spectral pooling preserves ridge structure and fine details significantly better than max or average pooling at aggressive downsampling rates—critical for maintaining discriminative fingerprint features.</sub>
 </div>
 
