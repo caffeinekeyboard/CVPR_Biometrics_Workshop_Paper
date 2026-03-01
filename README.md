@@ -68,18 +68,18 @@ Effective mitigation of elastic torque and non-linear stretching, enabling subst
 
 | Module | Components | Output |
 |:-------|:-----------|:-------|
-| **Feature Extraction** | CNN backbone + DCT spectral pooling layers | Feature maps v<sub>a</sub>, v<sub>b</sub> |
-| **Siamese Matching** | Symmetric 2D correlation layer | Bidirectional correlation maps C<sub>ab</sub>, C<sub>ba</sub> |
-| **Non-linear Alignment** | Control point regression + Bicubic interpolation | Dense deformation field Φ |
-| **Spatial Transformer** | Differentiable grid sampling | Aligned impression S<sub>b</sub>' |
+| **Feature Extraction** | CNN backbone + DCT spectral pooling layers | Feature maps $v_a$, $v_b$ |
+| **Siamese Matching** | Symmetric 2D correlation layer | Bidirectional correlation maps $C_{ab}, C_{ba}$ |
+| **Non-linear Alignment** | Control point regression + Bicubic interpolation | Dense deformation field $\mathbb{\Phi}$ |
+| **Spatial Transformer** | Differentiable grid sampling | Aligned impression $S_{\hat{b}}$ |
 
 <br>
 
-### 🔬 DCT Spectral Pooling: Why It Matters
+### DCT Spectral Pooling: Why It Matters
 
 <div align=\"center\">
 <img src="assets/dct_viz.png" alt="DCT Spectral Pooling Comparison" width="90%"/>
-<sub><b>Figure 2.</b> Comparison of pooling methods across subsampling factors (1:1 → 16:16). DCT spectral pooling preserves ridge structure and fine details significantly better than max or average pooling at aggressive downsampling rates—critical for maintaining discriminative fingerprint features.</sub>
+<sub><b><br>Figure 2.</b> Comparison of pooling methods across subsampling factors (1:1 → 16:16). DCT spectral pooling preserves ridge structure and fine details significantly better than max or average pooling at aggressive downsampling rates—critical for maintaining discriminative fingerprint features.</sub>
 </div>
 
 <br>
@@ -89,16 +89,24 @@ Effective mitigation of elastic torque and non-linear stretching, enabling subst
 **Our Solution:** DCT spectral pooling operates in the frequency domain, selectively retaining the most informative coefficients:
 
 ```python
-# Conceptual DCT Spectral Pooling
-def dct_spectral_pool(x, output_size):
-    # Transform to frequency domain
-    X_dct = dct_2d(x)
-    
-    # Crop to retain low-frequency components
-    X_cropped = X_dct[:, :, :output_size[0], :output_size[1]]
-    
-    # Transform back to spatial domain
-    return idct_2d(X_cropped)
+from spectral import DCTSpectralPooling
+
+# Create module: downsample 128x128 -> 32x32, keep low-frequency 32x32
+pool = DCTSpectralPooling(in_height=128, in_width=128,
+                          freq_h=32, freq_w=32,
+                          out_height=32, out_width=32)
+
+# Input tensor: (batch, channels, height, width)
+x = torch.randn(4, 3, 128, 128)
+y = pool(x)
+print(x.shape, "->", y.shape)  # expected: (4, 3, 128, 128) -> (4, 3, 32, 32)
+
+# Move to GPU (if available)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+pool = pool.to(device)
+x = x.to(device)
+y = pool(x)
+print("On device:", device, "output shape:", y.shape)
 ```
 
 <br>
@@ -107,19 +115,37 @@ def dct_spectral_pool(x, output_size):
 
 The network optimizes an unsupervised objective combining structural alignment and spatial smoothness:
 
-$$\mathcal{L}_{	ext{total}} = \mathcal{L}_{	ext{dice}} + \lambda \cdot \mathcal{L}_{	ext{smooth}}$$
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{dice}} + \lambda \cdot \mathcal{L}_{\text{smooth}}$$
 
 | Loss Component | Description | Purpose |
 |:---------------|:------------|:--------|
-| $\mathcal{L}_{	ext{dice}}$ | Soft Dice coefficient between aligned S<sub>b</sub>' and template S<sub>a</sub> | Maximize structural overlap |
-| $\mathcal{L}_{	ext{smooth}}$ | Spatial gradient penalty on deformation field Φ | Enforce physically plausible deformations |
+| $\mathcal{L}_{\text{dice}}$ | Soft Dice coefficient between aligned $S_{\hat{b}}$ and template $S_a$ | Maximize structural overlap |
+| $\mathcal{L}_{\text{smooth}}$ | Spatial gradient penalty on deformation field $\mathbb{\Phi}$ | Enforce physically plausible deformations |
+
+#### Training quickstart
+
+```python
+# from repo root
+conda create -n gumnet python=3.10 -y
+conda activate gumnet
+pip install -r requirements.txt  # if present
+# otherwise at minimum:
+pip install torch torchvision tqdm pillow
+```
+
+```bash
+python train.py --data_root ./data --save_dir ./checkpoints --batch_size 16 --epochs 100 --lr 1e-4
+```
 
 <br>
 
 ---
 
 ## Results
-
+Please view:
+- `downstream_matching.ipynb` to see how Gum-Net excels in fingerprint matching on our own synthetic dataset, introducing an *increase in the Bozorth3 score by 11.1%*.
+- `downstream_matching_tsinghua.ipynb` to see how Gum-Net excels in fingerprint matching on the **Tsinghua Distorted Fingerprints** dataset, introducing **increase in the Bozorth3 score by 7.5%**.
+-  `pearson_corelation_evaluation.ipynb` to see how Gum-Net performs in the fingerprint alignment tasks on the **FVC2004** dataset, **increasing the pearson correlation score by an average of 12.8%**.
 ### Alignment Performance
 
 Our method demonstrates robust alignment across diverse conditions:
@@ -132,78 +158,6 @@ Our method demonstrates robust alignment across diverse conditions:
 </tr>
 </table>
 
-
-<br>
-
----
-
-## Quick Start
-
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/anonymous/2d-gumnet.git
-cd 2d-gumnet
-
-# Create environment
-conda create -n gumnet python=3.9 -y
-conda activate gumnet
-
-# Install PyTorch (CUDA 11.8)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Inference
-
-```python
-import torch
-from gumnet import GumNet2D, load_image, visualize_alignment
-
-# Load pretrained model
-model = GumNet2D.from_pretrained(\"gumnet-base\")
-model.eval()
-
-# Load fingerprint pair
-template = load_image(\"examples/template.png\")      # Reference fingerprint
-impression = load_image(\"examples/impression.png\")  # Distorted impression
-
-# Predict alignment
-with torch.no_grad():
-    aligned, deformation_field = model(template, impression)
-
-# Visualize results
-visualize_alignment(template, impression, aligned, deformation_field, 
-                    save_path=\"output/alignment_result.png\")
-```
-
-### Training
-
-```bash
-# Train on synthetic dataset
-python train.py \
-    --config configs/synthetic.yaml \
-    --data_path data/anguli \
-    --output_dir checkpoints/
-
-# Resume training
-python train.py \
-    --config configs/synthetic.yaml \
-    --resume checkpoints/latest.pth
-```
-
-### Evaluation
-
-```bash
-# Evaluate alignment quality
-python evaluate.py \
-    --checkpoint checkpoints/best_model.pth \
-    --data_path data/test \
-    --output_dir results/
-```
 
 <br>
 
@@ -255,57 +209,6 @@ We utilize synthetic fingerprints generated with the **Anguli** fingerprint gene
 <br>
 
 ---
-## Important Links:
-
-- [Gum-Net Paper](https://openaccess.thecvf.com/content_CVPR_2020/papers/Zeng_Gum-Net_Unsupervised_Geometric_Matching_for_Fast_and_Accurate_3D_Subtomogram_CVPR_2020_paper.pdf)
-- [Gum-Net Supplemental](https://openaccess.thecvf.com/content_CVPR_2020/supplemental/Zeng_Gum-Net_Unsupervised_Geometric_CVPR_2020_supplemental.pdf#page=3.00)
-- [Google Drive](https://drive.google.com/drive/folders/1iDYChJ-Ee0wIsDdZsaEcUtGYgJdXz5y2)
-- [Current Gold Standard Fingerprint Matching Methods](https://docs.google.com/spreadsheets/d/1cSLaRhZ0j-iSGLZHZiXBqevQrt3hOLhBJd39syqC32s/edit?usp=sharing)
-- [Dates and Deadlines](https://icml.cc/Conferences/2026/Dates) 
-- [A Curated List of Fingerprint Datasets.](https://github.com/robertvazan/fingerprint-datasets)
-
-
-## Release Timeline
-
-| Asset | Status | Expected |
-|:------|:------:|:---------|
-| Paper | ✅ Submitted | CVPR 2026 |
-| Training Code | ⏳ Pending | Upon Acceptance |
-| Evaluation Code | ⏳ Pending | Upon Acceptance |
-| Pre-trained Weights | ⏳ Pending | Camera-Ready |
-| Synthetic Dataset | ⏳ Pending | Upon Acceptance |
-| Demo | ⏳ Pending | Camera-Ready |
-
-<br>
-
----
-
-## Citation
-
-If you find this work useful in your research, please consider citing:
-
-```bibtex
-@inproceedings{gumnet2d2026,
-    title     = {2D Gum-Net: Unsupervised Dense Deformation Grid Prediction 
-                 for Elastic Fingerprint Alignment},
-    author    = {Anonymous},
-    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision 
-                 and Pattern Recognition (CVPR)},
-    year      = {2026}
-}
-```
-
-<br>
-
----
-
-## Acknowledgments
-
-This work builds upon the foundational Gum-Net architecture developed for cryo-electron tomography subtomogram alignment. We thank the original authors for their pioneering contributions to unsupervised structural alignment.
-
-<br>
-
----
 
 ## License
 
@@ -315,16 +218,4 @@ This project is released under the [MIT License](LICENSE).
 
 ---
 
-<div align=\"center\">
-
-**Anonymous CVPR 2026 Submission**
-
-<br>
-
-<sub>If you have any questions, please open an issue or contact us after the review process.</sub>
-
-<br>
-
-
-</div>
-"
+**Anonymous CVPR 2026 Biometrics Workshop Submission**
