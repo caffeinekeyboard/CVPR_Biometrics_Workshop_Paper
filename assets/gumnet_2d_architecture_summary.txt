@@ -114,18 +114,18 @@ GumNet (GumNet)                                         [16, 1, 192, 192]    [16
 │    │    └─BatchNorm2d (16)                            [16, 1024, 2, 2]     [16, 1024, 2, 2]     2,048                True
 │    │    └─ReLU (17)                                   [16, 1024, 2, 2]     [16, 1024, 2, 2]     --                   --
 │    │    └─Flatten (18)                                [16, 1024, 2, 2]     [16, 4096]           --                   --
-├─GumNetSpatialAlignment (spatial_aligner)              [16, 4096]           [16, 1, 192, 192]    --                   True
+├─GumNetNonLinearAlignment (spatial_aligner)            [16, 4096]           [16, 1, 192, 192]    --                   True
 │    └─Linear (fc1)                                     [16, 8192]           [16, 2000]           16,386,000           True
 │    └─Linear (fc2)                                     [16, 2000]           [16, 2000]           4,002,000            True
-│    └─Linear (fc_out)                                  [16, 2000]           [16, 3]              6,003                True
+│    └─Linear (fc_out)                                  [16, 2000]           [16, 32]             64,032               True
 =======================================================================================================================================
-Total params: 120,113,167
-Trainable params: 119,989,331
+Total params: 120,171,196
+Trainable params: 120,047,360
 Non-trainable params: 123,836
 Total mult-adds (G): 99.00
 =======================================================================================================================================
 Input size (MB): 4.72
-Forward/backward pass size (MB): 2816.00
-Params size (MB): 480.44
-Estimated Total Size (MB): 3301.17
+Forward/backward pass size (MB): 2816.01
+Params size (MB): 480.68
+Estimated Total Size (MB): 3301.40
 =======================================================================================================================================
